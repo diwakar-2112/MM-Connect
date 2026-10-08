@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: mm-connect-api
+
+#  # Enable Java 21 virtual threads
+#  threads:
+#    virtual:
+#      enabled: true
+
+  # Automatically detect and connect to compose.yaml on startup
+  docker:
+    compose:
+      enabled: true
+      lifecycle-management: start-and-stop
+
+  mvc:
+    problemdetails:
+      enabled: true
+
+  jpa:
+    hibernate:
+      ddl-auto: validate # Flyway handles schema, Hibernate only validates
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+security:
+  jwt:
+    secret-key: "05e34a555529a4607b8ed8933caee77d463e93d32d579db5481f34c9908e0b31s"
+    access-token-expiration-minutes: 15
+    refresh-token-expiration-days: 30
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
