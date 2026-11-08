@@ -10,5 +10,18 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  minio:
+    image: 'cgr.dev/chainguard/minio:latest'
+    environment:
+      MINIO_ROOT_USER: 'local_minio_admin'
+      MINIO_ROOT_PASSWORD: 'local_minio_password'
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    command: server /data --console-address ":9001"
+    volumes:
+      - miniodata:/data
+
 volumes:
   pgdata:
+  miniodata:

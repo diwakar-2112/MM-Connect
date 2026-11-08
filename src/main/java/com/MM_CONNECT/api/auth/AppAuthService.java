@@ -7,6 +7,8 @@ import com.google.firebase.auth.FirebaseToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
+
 @Service
 public class AppAuthService {
 
@@ -21,26 +23,35 @@ public class AppAuthService {
     @Transactional
     public TokenResponse processFirebaseLogin(String firebaseTokenStr) {
         try {
-            // 1. Ask Google if the token is valid (this requires Firebase config, which we will add next)
             FirebaseToken decodedToken = FirebaseAuth.getInstance().verifyIdToken(firebaseTokenStr);
-            String phoneNumber = decodedToken.getClaims().get("phone_number").toString();
 
-            // 2. Find existing user, or flag as new if they don't exist
-            boolean isNew = !userRepository.existsByPhoneNumber(phoneNumber);
+            // Extract whatever Google gives us (could be email from Google Sign-In, or phone from OTP)
+            String email = (String) decodedToken.getClaims().get("email");
+            String phoneNumber = (String) decodedToken.getClaims().get("phone_number");
 
-            User user = userRepository.findByPhoneNumber(phoneNumber)
-                    .orElseGet(() -> {
-                        // Create brand new user in the database
-                        User newUser = new User(phoneNumber, null);
-                        newUser.setVerified(false);
-                        return userRepository.save(newUser);
-                    });
+            if (email == null && phoneNumber == null) {
+                throw new RuntimeException("Authentication failed: No email or phone found in token");
+            }
 
-            // 3. Generate our own backend JWTs
+            // Find by Email OR Phone
+            Optional<User> existingUser;
+            if (email != null) {
+                existingUser = userRepository.findByEmail(email);
+            } else {
+                existingUser = userRepository.findByPhoneNumber(phoneNumber);
+            }
+
+            boolean isNew = existingUser.isEmpty();
+
+            // Create user if they don't exist
+            User user = existingUser.orElseGet(() -> {
+                User newUser = new User(phoneNumber, email);
+                return userRepository.save(newUser);
+            });
+
+            // Generate backend JWTs
             String accessToken = jwtService.generateAccessToken(user);
             String refreshToken = jwtService.generateRefreshToken(user);
-
-            // (Later: we will save the refreshToken into the refresh_tokens table here)
 
             return new TokenResponse(accessToken, refreshToken, isNew);
 

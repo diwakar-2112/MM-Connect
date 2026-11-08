@@ -32,6 +32,15 @@ security:
     access-token-expiration-minutes: 15
     refresh-token-expiration-days: 30
 
+# S3 / Cloudflare R2 / MinIO Configuration
+cloud:
+  storage:
+    endpoint: "http://localhost:9000"
+    region: "us-east-1"
+    bucket: "parinay-profiles"
+    access-key: "local_minio_admin"
+    secret-key: "local_minio_password"
+
 management:
   endpoints:
     web:

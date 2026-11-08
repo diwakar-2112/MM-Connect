@@ -1,0 +1,63 @@
+<html lang="en">
+<head>
+    <title>Google Sign-In Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 50px; text-align: center; }
+        button { padding: 15px 30px; font-size: 18px; cursor: pointer; background: #db4437; color: white; border: none; border-radius: 5px; }
+        pre { background: #eee; padding: 20px; text-align: left; max-width: 600px; margin: 20px auto; overflow-x: auto; }
+    </style>
+</head>
+<body>
+
+<h2>Login / Register to Spring Boot</h2>
+<button id="loginBtn">Sign in with Google</button>
+<pre id="output">Waiting for action...</pre>
+
+<!-- Firebase V10 Modular SDK via CDN -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+
+    // === REPLACE THESE WITH YOUR FIREBASE PROJECT SETTINGS ===
+    const firebaseConfig = {
+        apiKey: "AIzaSyBKzzLr-GhyNp5ycs1am5HM2JJoITCw6Rk",
+authDomain: "mm-connect-255c4.firebaseapp.com",
+projectId: "mm-connect-255c4",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+        const out = document.getElementById('output');
+        out.innerText = "Opening Google Popup...";
+
+        try {
+            // 1. Authenticate with Google
+            const result = await signInWithPopup(auth, provider);
+            const user = result.user;
+
+            // 2. Get the real Firebase JWT
+            const firebaseToken = await user.getIdToken();
+            out.innerText = "Got Google Token! Sending to Spring Boot...\n";
+
+            // 3. Send it to your Spring Boot API
+            const backendResponse = await fetch("http://localhost:8080/v1/auth/session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ firebaseToken: firebaseToken })
+            });
+
+            // 4. Show the result from Spring Boot
+            const backendData = await backendResponse.json();
+            out.innerText += "\n=== RESPONSE FROM POSTGRES/SPRING ===\n";
+            out.innerText += JSON.stringify(backendData, null, 2);
+
+        } catch (error) {
+            out.innerText = "Error: " + error.message;
+        }
+    });
+</script>
+</body>
+</html>

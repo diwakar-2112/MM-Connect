@@ -34,3 +34,8 @@ build/
 
 # Ignore Firebase private key
 firebase-admin.json
+
+/docs
+/backup.sql
+/application.yml
+/V1_allow_schema.sql

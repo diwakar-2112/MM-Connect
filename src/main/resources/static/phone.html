@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Phone OTP Sign-In Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 50px; text-align: center; }
+        input, button { padding: 10px; margin: 5px; font-size: 16px; }
+        pre { background: #eee; padding: 20px; text-align: left; max-width: 600px; margin: 20px auto; }
+    </style>
+</head>
+<body>
+
+<h2>Login with Phone OTP</h2>
+
+<!-- Step 1: Phone Number -->
+<div id="step1">
+    <input type="text" id="phoneInput" value="+919999999999" placeholder="Enter phone (+91...)">
+    <button id="sendCodeBtn">Send OTP</button>
+</div>
+
+<!-- Step 2: Enter OTP (Hidden initially) -->
+<div id="step2" style="display:none; margin-top:20px;">
+    <input type="text" id="otpInput" placeholder="Enter 6-digit OTP (123456)">
+    <button id="verifyCodeBtn">Verify OTP</button>
+</div>
+
+<!-- Invisible Recaptcha (Required by Firebase to prevent spam bots) -->
+<div id="recaptcha-container"></div>
+
+<pre id="output">Waiting...</pre>
+
+<!-- Firebase SDK -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getAuth, signInWithPhoneNumber, RecaptchaVerifier } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+
+    // === REPLACE THESE WITH YOUR FIREBASE PROJECT SETTINGS ===
+    const firebaseConfig = {
+        apiKey: "AIzaSyBKzzLr-GhyNp5ycs1am5HM2JJoITCw6Rk",
+          authDomain: "mm-connect-255c4.firebaseapp.com",
+        projectId: "mm-connect-255c4",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    let windowConfirmationResult; // Will hold the SMS verification status
+    const out = document.getElementById('output');
+
+    // Setup Invisible reCAPTCHA (Firebase requires this to stop SMS spam)
+    const recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { size: 'invisible' });
+
+    // BUTTON 1: SEND OTP
+    document.getElementById('sendCodeBtn').addEventListener('click', async () => {
+        const phoneNumber = document.getElementById('phoneInput').value;
+        out.innerText = "Sending OTP to " + phoneNumber + "...";
+
+        try {
+            windowConfirmationResult = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
+            out.innerText = "OTP Sent! Please enter the code.";
+            document.getElementById('step1').style.display = 'none';
+            document.getElementById('step2').style.display = 'block';
+        } catch (error) {
+            out.innerText = "Error sending SMS: " + error.message;
+        }
+    });
+
+    // BUTTON 2: VERIFY OTP & SEND TO SPRING BOOT
+    document.getElementById('verifyCodeBtn').addEventListener('click', async () => {
+        const otpCode = document.getElementById('otpInput').value;
+        out.innerText = "Verifying OTP with Firebase...";
+
+        try {
+            // 1. Verify OTP with Firebase
+            const result = await windowConfirmationResult.confirm(otpCode);
+            const user = result.user;
+
+            // 2. Get the Firebase Token
+            const firebaseToken = await user.getIdToken();
+            out.innerText = "Success! Got Token. Sending to Spring Boot...\n";
+
+            // 3. Send it to Spring Boot!
+            const backendResponse = await fetch("http://localhost:8080/v1/auth/session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ firebaseToken: firebaseToken })
+            });
+
+            // 4. Show the result
+            const backendData = await backendResponse.json();
+            out.innerText += "\n=== RESPONSE FROM SPRING BOOT ===\n";
+            out.innerText += JSON.stringify(backendData, null, 2);
+
+        } catch (error) {
+            out.innerText = "Invalid OTP or Error: " + error.message;
+        }
+    });
+</script>
+</body>
+</html>
