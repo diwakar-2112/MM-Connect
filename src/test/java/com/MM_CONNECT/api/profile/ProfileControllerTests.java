@@ -50,8 +50,10 @@ class ProfileControllerTests {
 
         User viewer = new User(null, "viewer@example.test");
         viewer.setId(viewerId);
+        viewer.setVerified(true);
         User target = new User("1234567890", "private@example.test");
         target.setId(targetId);
+        target.setVerified(true);
         when(users.findById(viewerId)).thenReturn(Optional.of(viewer));
         when(users.findById(targetId)).thenReturn(Optional.of(target));
         when(profiles.existsById(viewerId)).thenReturn(true);
@@ -73,6 +75,7 @@ class ProfileControllerTests {
         when(profiles.findById(viewerId)).thenReturn(Optional.of(ownProfile));
         when(preferences.findById(viewerId)).thenReturn(Optional.of(new PartnerPreference()));
         when(photos.findAll()).thenReturn(List.of());
+        when(photos.findProfilePhotos(viewerId)).thenReturn(List.of());
 
         mvc = standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())

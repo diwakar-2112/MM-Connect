@@ -4,6 +4,8 @@ import com.MM_CONNECT.api.auth.User;
 import com.MM_CONNECT.api.auth.UserRepository;
 import com.MM_CONNECT.api.profile.Profile;
 import com.MM_CONNECT.api.profile.ProfileRepository;
+import com.MM_CONNECT.api.verification.MemberAccessService;
+import com.MM_CONNECT.api.matching.UserInteractionRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -28,13 +30,18 @@ public class ConnectionController {
     private final ConnectionRequestRepository connectionRepository;
     private final ProfileRepository profileRepository;
     private final UserRepository userRepository;
+    private final MemberAccessService access;
+    private final UserInteractionRepository interactions;
 
     public ConnectionController(ConnectionRequestRepository connectionRepository,
                                 ProfileRepository profileRepository,
-                                UserRepository userRepository) {
+                                UserRepository userRepository, MemberAccessService access,
+                                UserInteractionRepository interactions) {
         this.connectionRepository = connectionRepository;
         this.profileRepository = profileRepository;
         this.userRepository = userRepository;
+        this.access = access;
+        this.interactions = interactions;
     }
 
     // --- DTOs ---
@@ -66,6 +73,8 @@ public class ConnectionController {
             @PathVariable UUID targetUserId,
             @RequestBody(required = false) SendNotePayload payload) {
 
+        access.requireApproved(myUserId);
+        requireTarget(myUserId, targetUserId);
         if (myUserId.equals(targetUserId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot send a request to yourself.");
         }
@@ -84,10 +93,11 @@ public class ConnectionController {
     // 2. VIEW RECEIVED REQUESTS
     @GetMapping("/requests/received")
     public ResponseEntity<List<RequestItemDto>> getReceivedRequests(@AuthenticationPrincipal UUID myUserId) {
+        access.requireApproved(myUserId);
         List<ConnectionRequest> list = connectionRepository.findByReceiverIdOrderByCreatedAtDesc(myUserId);
         List<RequestItemDto> result = new ArrayList<>();
         for (ConnectionRequest req : list) {
-            result.add(toDto(req, req.getSenderId()));
+            if (visibleTarget(myUserId, req.getSenderId())) result.add(toDto(req, req.getSenderId()));
         }
         return ResponseEntity.ok(result);
     }
@@ -95,10 +105,11 @@ public class ConnectionController {
     // 3. VIEW SENT REQUESTS
     @GetMapping("/requests/sent")
     public ResponseEntity<List<RequestItemDto>> getSentRequests(@AuthenticationPrincipal UUID myUserId) {
+        access.requireApproved(myUserId);
         List<ConnectionRequest> list = connectionRepository.findBySenderIdOrderByCreatedAtDesc(myUserId);
         List<RequestItemDto> result = new ArrayList<>();
         for (ConnectionRequest req : list) {
-            result.add(toDto(req, req.getReceiverId()));
+            if (visibleTarget(myUserId, req.getReceiverId())) result.add(toDto(req, req.getReceiverId()));
         }
         return ResponseEntity.ok(result);
     }
@@ -110,6 +121,7 @@ public class ConnectionController {
             @AuthenticationPrincipal UUID myUserId,
             @PathVariable UUID requestId) {
 
+        access.requireApproved(myUserId);
         ConnectionRequest req = getRequestOrThrow(requestId);
         if (!req.getReceiverId().equals(myUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the recipient can accept this request.");
@@ -118,6 +130,7 @@ public class ConnectionController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request is no longer in SENT state.");
         }
 
+        requireTarget(myUserId, req.getSenderId());
         req.setStatus("ACCEPTED");
         connectionRepository.save(req);
         return ResponseEntity.ok(toDto(req, req.getSenderId()));
@@ -130,11 +143,13 @@ public class ConnectionController {
             @AuthenticationPrincipal UUID myUserId,
             @PathVariable UUID requestId) {
 
+        access.requireApproved(myUserId);
         ConnectionRequest req = getRequestOrThrow(requestId);
         if (!req.getReceiverId().equals(myUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the recipient can decline this request.");
         }
 
+        requireTarget(myUserId, req.getSenderId());
         req.setStatus("DECLINED");
         connectionRepository.save(req);
         return ResponseEntity.ok(toDto(req, req.getSenderId()));
@@ -147,6 +162,7 @@ public class ConnectionController {
             @AuthenticationPrincipal UUID myUserId,
             @PathVariable UUID requestId) {
 
+        access.requireApproved(myUserId);
         ConnectionRequest req = getRequestOrThrow(requestId);
         if (!req.getSenderId().equals(myUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the sender can withdraw this request.");
@@ -155,6 +171,7 @@ public class ConnectionController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot withdraw once already responded to.");
         }
 
+        requireTarget(myUserId, req.getReceiverId());
         req.setStatus("WITHDRAWN");
         connectionRepository.save(req);
         return ResponseEntity.ok(toDto(req, req.getReceiverId()));
@@ -166,6 +183,7 @@ public class ConnectionController {
             @AuthenticationPrincipal UUID myUserId,
             @PathVariable UUID requestId) {
 
+        access.requireApproved(myUserId);
         ConnectionRequest req = getRequestOrThrow(requestId);
 
         boolean isParticipant = req.getSenderId().equals(myUserId) || req.getReceiverId().equals(myUserId);
@@ -182,6 +200,7 @@ public class ConnectionController {
 
         UUID partnerId = req.getSenderId().equals(myUserId) ? req.getReceiverId() : req.getSenderId();
 
+        requireTarget(myUserId, partnerId);
         User partnerUser = userRepository.findById(partnerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         Profile partnerProfile = profileRepository.findById(partnerId).orElse(null);
@@ -199,6 +218,20 @@ public class ConnectionController {
     private ConnectionRequest getRequestOrThrow(UUID requestId) {
         return connectionRepository.findById(requestId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Request not found"));
+    }
+
+    private void requireTarget(UUID actorId, UUID targetId) {
+        access.requirePublishedTarget(targetId);
+        if (!visibleTarget(actorId, targetId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found");
+        }
+    }
+
+    private boolean visibleTarget(UUID actorId, UUID targetId) {
+        return userRepository.findById(targetId)
+                .filter(u -> u.isActive() && u.getDeletedAt() == null && u.isVerified()).isPresent()
+                && !interactions.existsByActorIdAndTargetIdAndAction(actorId, targetId, "BLOCKED")
+                && !interactions.existsByActorIdAndTargetIdAndAction(targetId, actorId, "BLOCKED");
     }
 
     private RequestItemDto toDto(ConnectionRequest req, UUID otherUserId) {

@@ -39,3 +39,8 @@ firebase-admin.json
 /backup.sql
 /application.yml
 /V1_allow_schema.sql
+
+# Private local environment files
+.env
+.env.*
+!.env.example

@@ -2,6 +2,8 @@ package com.MM_CONNECT.api.matching;
 
 import com.MM_CONNECT.api.auth.User;
 import com.MM_CONNECT.api.auth.UserRepository;
+import com.MM_CONNECT.api.verification.MemberAccessService;
+import com.MM_CONNECT.api.media.PhotoAccessService;
 import com.MM_CONNECT.api.common.GlobalExceptionHandler;
 import com.MM_CONNECT.api.media.PhotoUploadService;
 import com.MM_CONNECT.api.media.ProfilePhotoRepository;
@@ -58,6 +60,7 @@ class DiscoveryControllerTests {
         users = mock(UserRepository.class);
         viewer = new User(null, "viewer@example.test");
         viewer.setId(userId);
+        viewer.setVerified(true);
         when(users.findById(userId)).thenReturn(Optional.of(viewer));
         when(profiles.existsById(userId)).thenReturn(true);
         when(matchRepository.findDiscoveryFeed(eq(userId), nullable(String.class),
@@ -66,7 +69,8 @@ class DiscoveryControllerTests {
 
         DiscoveryController controller = new DiscoveryController(matchRepository,
                 profiles, mock(ProfilePhotoRepository.class),
-                mock(PhotoUploadService.class), mock(UserInteractionRepository.class), users);
+                mock(PhotoUploadService.class), mock(UserInteractionRepository.class), users,
+                new MemberAccessService(users, profiles), mock(PhotoAccessService.class));
 
         mvc = standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -146,6 +150,16 @@ class DiscoveryControllerTests {
     }
 
     @Test
+    void submittedButUnverifiedViewerStillGetsLockedPreviews() throws Exception {
+        viewer.setVerified(false);
+        mvc.perform(get("/v1/discover")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.profileLocked").value(true));
+        viewer.setVerified(true);
+        mvc.perform(get("/v1/discover")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.profileLocked").value(false));
+    }
+
+    @Test
     void invalidGenderReturnsBadRequestWithoutQueryingFeed() throws Exception {
         mvc.perform(get("/v1/discover").param("gender", "INVALID"))
                 .andExpect(status().isBadRequest())
@@ -162,6 +176,10 @@ class DiscoveryControllerTests {
     void incompleteViewerCanBrowseCardsWithOneCommonLock(String gender) throws Exception {
         when(profiles.existsById(userId)).thenReturn(false);
         UUID targetId = UUID.randomUUID();
+        User approvedTarget = new User();
+        approvedTarget.setId(targetId);
+        approvedTarget.setVerified(true);
+        when(users.findById(targetId)).thenReturn(Optional.of(approvedTarget));
         MatchProfile target = new MatchProfile();
         target.setUserId(targetId);
         target.setAge(28);
@@ -206,7 +224,7 @@ class DiscoveryControllerTests {
     }
 
     @Test
-    void lockReflectsCompletedOnboardingOnTheNextRequest() throws Exception {
+    void lockReflectsApprovedOnboardingOnTheNextRequest() throws Exception {
         when(profiles.existsById(userId)).thenReturn(false, true);
 
         mvc.perform(get("/v1/discover"))

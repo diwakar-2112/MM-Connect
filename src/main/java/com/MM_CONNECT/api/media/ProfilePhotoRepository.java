@@ -6,10 +6,12 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.util.UUID;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ProfilePhotoRepository extends JpaRepository<ProfilePhoto, UUID> {
     long countByUserId(UUID userId);
+    Optional<ProfilePhoto> findFirstByStorageKey(String storageKey);
 
     @Query("""
         SELECT p FROM ProfilePhoto p

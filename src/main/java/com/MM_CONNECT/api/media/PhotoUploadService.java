@@ -61,9 +61,15 @@ public class PhotoUploadService {
         // Lock the account, which exists even before onboarding, until this save commits.
         // Every confirmation for the same account must count photos after acquiring it.
         userRepository.findByIdForUpdate(userId)
+                .filter(user -> user.isActive() && user.getDeletedAt() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Account not found."));
         requireAvailablePhotoSlot(userId);
 
+        String prefix = "profiles/" + userId + "/";
+        if (!request.fileKey().startsWith(prefix)
+                || !request.fileKey().substring(prefix.length()).matches("[0-9a-fA-F-]{36}\\.jpg")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Use the fileKey issued for your own JPEG upload.");
+        }
         // Saves the link into PostgreSQL!
         ProfilePhoto photo = new ProfilePhoto(userId, request.fileKey(), request.isPrimary());
         photoRepository.save(photo);

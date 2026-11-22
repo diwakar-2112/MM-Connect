@@ -58,16 +58,14 @@ public class ProfileController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Preferences not found"));
 
         List<PhotoViewDto> photoDtos = new ArrayList<>();
-        List<ProfilePhoto> myPhotos = photoRepository.findAll().stream()
-                .filter(photo -> photo.getUserId().equals(userId))
-                .toList();
+        List<ProfilePhoto> myPhotos = photoRepository.findProfilePhotos(userId);
 
         for (ProfilePhoto photo : myPhotos) {
             String tempUrl = photoUploadService.generatePresignedGetUrl(photo.getStorageKey());
             photoDtos.add(new PhotoViewDto(tempUrl, photo.isPrimary()));
         }
 
-        return ResponseEntity.ok(new MyProfileResponse(profile, prefs, photoDtos));
+        return ResponseEntity.ok().header("Cache-Control", "no-store").body(new MyProfileResponse(profile, prefs, photoDtos));
     }
 
     @GetMapping("/{userId}")

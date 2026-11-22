@@ -70,7 +70,7 @@ class PhotoUploadServiceTests {
     void fifthPhotoCanBeSavedWhetherPrimaryOrAdditional(boolean primary) {
         when(photos.countByUserId(userId)).thenReturn(4L);
 
-        service.confirmAndSavePhoto(userId, new PhotoConfirmRequest("photo-five.jpg", primary));
+        service.confirmAndSavePhoto(userId, new PhotoConfirmRequest(ownKey(), primary));
 
         var order = inOrder(users, photos);
         order.verify(users).findByIdForUpdate(userId);
@@ -103,7 +103,7 @@ class PhotoUploadServiceTests {
         when(presigner.presignPutObject(any(PutObjectPresignRequest.class))).thenReturn(signed);
         var oldLink = service.generatePresignedPutUrl(userId, ".jpg");
 
-        service.confirmAndSavePhoto(userId, new PhotoConfirmRequest("fifth.jpg", false));
+        service.confirmAndSavePhoto(userId, new PhotoConfirmRequest(ownKey(), false));
         assertPhotoLimit(assertThrows(ResponseStatusException.class,
                 () -> service.confirmAndSavePhoto(userId, new PhotoConfirmRequest(oldLink.fileKey(), false))));
 
@@ -127,5 +127,18 @@ class PhotoUploadServiceTests {
         assertEquals("You can upload a maximum of 5 profile photos.", error.getReason());
         assertEquals("PHOTO_LIMIT_REACHED", error.getBody().getProperties().get("code"));
         assertEquals(5, error.getBody().getProperties().get("maxPhotos"));
+    }
+
+    private String ownKey() { return "profiles/" + userId + "/" + UUID.randomUUID() + ".jpg"; }
+
+    @Test
+    void cannotLinkAnotherMembersKeyOrAnExternalUrl() {
+        for (String key : new String[] {"profiles/" + UUID.randomUUID() + "/" + UUID.randomUUID() + ".jpg",
+                "https://example.test/photo.jpg", "profiles/" + userId + "/../other.jpg"}) {
+            var error = assertThrows(ResponseStatusException.class,
+                    () -> service.confirmAndSavePhoto(userId, new PhotoConfirmRequest(key, false)));
+            assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode());
+        }
+        verify(photos, never()).save(any());
     }
 }

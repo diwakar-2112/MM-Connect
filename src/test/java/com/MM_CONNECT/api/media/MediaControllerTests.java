@@ -37,7 +37,7 @@ class MediaControllerTests {
         var users = mock(UserRepository.class);
         when(users.findByIdForUpdate(userId)).thenReturn(Optional.of(new User()));
         when(photos.countByUserId(userId)).thenReturn(5L);
-        var controller = new MediaController(new PhotoUploadService(presigner, photos, users));
+        var controller = new MediaController(new PhotoUploadService(presigner, photos, users), mock(PhotoAccessService.class));
         mvc = standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {

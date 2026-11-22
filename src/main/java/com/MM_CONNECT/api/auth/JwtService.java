@@ -33,6 +33,8 @@ public class JwtService {
                 .withSubject(user.getId().toString())
                 .withClaim("phone", user.getPhoneNumber())
                 .withClaim("role", user.getRole())
+                .withClaim("token_type", "access")
+                .withClaim("firebase_uid", user.getFirebaseUid())
                 .withIssuedAt(Instant.now())
                 .withExpiresAt(Instant.now().plus(accessTokenExpiration, ChronoUnit.MINUTES))
                 .withIssuer("parinay-api")
@@ -47,6 +49,7 @@ public class JwtService {
 
         return JWT.create()
                 .withSubject(user.getId().toString())
+                .withClaim("token_type", "refresh")
                 .withIssuedAt(Instant.now())
                 .withExpiresAt(Instant.now().plus(refreshTokenExpirationDays, ChronoUnit.DAYS))
                 .withIssuer("parinay-api")
@@ -69,6 +72,7 @@ public class JwtService {
      * Extracts User UUID from token subject
      */
     public UUID extractUserId(DecodedJWT decodedJWT) {
+        if (decodedJWT.getSubject() == null) throw new IllegalArgumentException("Token subject is required");
         return UUID.fromString(decodedJWT.getSubject());
     }
 }

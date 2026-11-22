@@ -16,9 +16,11 @@ import java.util.UUID;
 public class MediaController {
 
     private final PhotoUploadService photoUploadService;
+    private final PhotoAccessService photoAccess;
 
-    public MediaController(PhotoUploadService photoUploadService) {
+    public MediaController(PhotoUploadService photoUploadService, PhotoAccessService photoAccess) {
         this.photoUploadService = photoUploadService;
+        this.photoAccess = photoAccess;
     }
 
     @PostMapping("/upload-url")
@@ -39,9 +41,7 @@ public class MediaController {
     @GetMapping("/view")
     public ResponseEntity<String> viewPhoto(@AuthenticationPrincipal UUID userId, @RequestParam String fileKey) {
 
-        // Note: In Phase 4, we will actually verify if this 'userId' has permission
-        // to view this 'fileKey', but for now, we just generate the link.
-
+        photoAccess.requireView(userId, fileKey);
         String viewUrl = photoUploadService.generatePresignedGetUrl(fileKey);
         return ResponseEntity.ok(viewUrl);
     }

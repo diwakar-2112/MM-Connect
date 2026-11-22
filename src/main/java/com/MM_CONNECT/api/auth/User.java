@@ -27,6 +27,18 @@ public class User {
     @Column(name = "is_verified", nullable = false)
     private boolean verified = false;
 
+    @Column(name = "first_approved_at")
+    private Instant firstApprovedAt;
+
+    @Column(name = "firebase_uid", length = 128, unique = true)
+    private String firebaseUid;
+
+    @Column(name = "sign_in_name", length = 100)
+    private String signInName;
+
+    @Column(name = "last_login_at")
+    private Instant lastLoginAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -66,6 +78,15 @@ public class User {
 
     public boolean isVerified() { return verified; }
     public void setVerified(boolean verified) { this.verified = verified; }
+
+    public Instant getFirstApprovedAt() { return firstApprovedAt; }
+    public void setFirstApprovedAt(Instant value) { this.firstApprovedAt = value; }
+    public String getFirebaseUid() { return firebaseUid; }
+    public void setFirebaseUid(String value) { this.firebaseUid = value; }
+    public String getSignInName() { return signInName; }
+    public void setSignInName(String value) { this.signInName = value; }
+    public Instant getLastLoginAt() { return lastLoginAt; }
+    public void setLastLoginAt(Instant value) { this.lastLoginAt = value; }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

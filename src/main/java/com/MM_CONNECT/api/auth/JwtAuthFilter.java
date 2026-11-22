@@ -1,6 +1,8 @@
 package com.MM_CONNECT.api.auth;
 
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.auth0.jwt.exceptions.JWTVerificationException;
+import org.springframework.dao.DataAccessException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,9 +23,11 @@ import java.util.UUID;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService tokenProcessor;
+    private final UserRepository users;
 
-    public JwtAuthFilter(JwtService tokenProcessor) {
+    public JwtAuthFilter(JwtService tokenProcessor, UserRepository users) {
         this.tokenProcessor = tokenProcessor;
+        this.users = users;
     }
 
     @Override
@@ -47,7 +51,27 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
             // 3. Extract user info
             UUID userId = tokenProcessor.extractUserId(verifiedJwt);
-            String role = verifiedJwt.getClaim("role").asString();
+            String tokenType = verifiedJwt.getClaim("token_type").asString();
+            // Legacy access tokens carry a role. Legacy refresh tokens do not.
+            if (!("access".equals(tokenType)
+                    || (tokenType == null && verifiedJwt.getClaim("role").asString() != null))) {
+                throw new IllegalArgumentException("Access token required");
+            }
+            User user = users.findById(userId)
+                    .filter(u -> u.isActive() && u.getDeletedAt() == null)
+                    .orElseThrow(() -> new IllegalArgumentException("Account unavailable"));
+            String role = user.getRole();
+            if (!"ROLE_USER".equals(role)
+                    && !com.MM_CONNECT.api.admin.StaffAccessService.isStaffRole(role)) {
+                throw new IllegalArgumentException("Unsupported role");
+            }
+            // Promoting an existing member must not upgrade its already-issued JWT.
+            if (com.MM_CONNECT.api.admin.StaffAccessService.isStaffRole(role)
+                    && (user.getFirebaseUid() == null
+                    || !user.getFirebaseUid().equals(verifiedJwt.getClaim("firebase_uid").asString())
+                    || !role.equals(verifiedJwt.getClaim("role").asString()))) {
+                throw new IllegalArgumentException("Staff must sign in again");
+            }
 
             // 4. Create the security session
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
@@ -60,7 +84,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             // 5. Tell Spring Security this request is officially authenticated
             SecurityContextHolder.getContext().setAuthentication(authentication);
 
-        } catch (Exception ex) {
+        } catch (DataAccessException ex) {
+            SecurityContextHolder.clearContext();
+            response.setStatus(503);
+            response.setContentType("application/problem+json");
+            response.getWriter().write("{\"status\":503,\"title\":\"Service Unavailable\",\"detail\":\"Account service is temporarily unavailable.\"}");
+            return;
+        } catch (JWTVerificationException | IllegalArgumentException ex) {
             // If token is expired or fake, reject quietly (Context remains empty, leading to 401)
             SecurityContextHolder.clearContext();
         }

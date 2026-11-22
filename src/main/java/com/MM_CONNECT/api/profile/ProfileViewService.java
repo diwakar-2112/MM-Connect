@@ -55,6 +55,12 @@ public class ProfileViewService {
             throw error;
         }
 
+        if (!viewer.isVerified()) {
+            var error = new ResponseStatusException(HttpStatus.FORBIDDEN, "Your profile needs approval before you can continue.");
+            error.getBody().setProperty("code", "VERIFICATION_REQUIRED");
+            throw error;
+        }
+
         boolean owner = viewerId.equals(targetUserId);
         if (!owner && (interactionRepository.existsByActorIdAndTargetIdAndAction(viewerId, targetUserId, "BLOCKED")
                 || interactionRepository.existsByActorIdAndTargetIdAndAction(targetUserId, viewerId, "BLOCKED"))) {
@@ -62,7 +68,7 @@ public class ProfileViewService {
         }
 
         User target = owner ? viewer : userRepository.findById(targetUserId)
-                .filter(user -> user.isActive() && user.getDeletedAt() == null)
+                .filter(user -> user.isActive() && user.getDeletedAt() == null && user.isVerified())
                 .orElseThrow(this::profileNotFound);
         Profile profile = profileRepository.findById(targetUserId).orElseThrow(this::profileNotFound);
 

@@ -1,0 +1,665 @@
+{
+  "info": {
+    "name": "MM-CONNECT | Staff password auth and verification | R1.1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Separate staff username/password sessions. Flutter Firebase login is unchanged. Set baseUrl and private staff credentials in a local selected environment; never export populated credentials. Private Superadmin bootstrap and V8 must be prepared by the operator first; no account is seeded by this collection. Sign in -> inspect auth/me -> change initial password if required (captures replacement token) -> review. Create/list/reset are Superadmin-only; review decisions and resets/logout are manual branches, not a linear runner. Member/Firebase tokens get 401 on admin routes. Required password change blocks review/management with 403 PASSWORD_CHANGE_REQUIRED. Inspect the exact review/version before a decision. No live responses are included."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminAccessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "adminAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "memberAccessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "reviewId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "reviewVersion",
+      "value": "0",
+      "type": "string"
+    },
+    {
+      "key": "feedback",
+      "value": "Please correct the highlighted profile details.",
+      "type": "string"
+    },
+    {
+      "key": "staffUsername",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "staffPassword",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "staffNewPassword",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "passwordChangeRequired",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "newAdminUsername",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "temporaryPassword",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "staffUserId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 | Staff - Password session",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/auth/session",
+        "description": "No Firebase token. Captures only the staff access token and first-change flag. Use privately provisioned staff credentials.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{staffUsername}}\",\n  \"password\": \"{{staffPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const fields = {\"username\": \"staffUsername\", \"password\": \"staffPassword\"};",
+              "const body = {};",
+              "Object.keys(fields).forEach(function (field) {",
+              "  const value = pm.variables.get(fields[field]);",
+              "  if (typeof value !== \"string\" || !value.length) { throw new Error(\"Set \" + fields[field] + \" in your private selected environment.\"); }",
+              "  body[field] = value;",
+              "});",
+              "pm.request.body.update(JSON.stringify(body));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+              "if (pm.response.code === 200) {",
+              "  const data = pm.response.json();",
+              "  pm.environment.set(\"adminAccessToken\", data.accessToken);",
+              "  pm.environment.set(\"passwordChangeRequired\", String(data.passwordChangeRequired));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "02 | Staff - Session and password-change state",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/auth/me",
+        "description": "Allowed before required password change. Permissions are empty until that change succeeds."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "03 | Staff - Change own password (when needed)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/auth/change-password",
+        "description": "New password: 15-128 characters. Captures the replacement token; all older staff tokens become invalid. Update your private current-password environment value yourself after success.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"currentPassword\": \"{{staffPassword}}\",\n  \"newPassword\": \"{{staffNewPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const fields = {\"currentPassword\": \"staffPassword\", \"newPassword\": \"staffNewPassword\"};",
+              "const body = {};",
+              "Object.keys(fields).forEach(function (field) {",
+              "  const value = pm.variables.get(fields[field]);",
+              "  if (typeof value !== \"string\" || !value.length) { throw new Error(\"Set \" + fields[field] + \" in your private selected environment.\"); }",
+              "  body[field] = value;",
+              "});",
+              "pm.request.body.update(JSON.stringify(body));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+              "if (pm.response.code === 200) {",
+              "  const data = pm.response.json();",
+              "  pm.environment.set(\"adminAccessToken\", data.accessToken);",
+              "  pm.environment.set(\"passwordChangeRequired\", String(data.passwordChangeRequired));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "02 | Staff - My permissions",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/me",
+        "description": "ADMIN and SUPERADMIN can read/decide verification reviews. No member onboarding is required."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "03 | List pending reviews",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/verifications?status=PENDING&page=0&size=20",
+        "description": "Paginated review summaries; no automatic target selection. Supported status: PENDING, APPROVED, CHANGES_REQUIRED, SUPERSEDED. Size 1–100."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) pm.test(\"Content array\", () => pm.expect(pm.response.json().content).to.be.an(\"array\"));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "04 | Inspect selected submission",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/verifications/{{reviewId}}",
+        "description": "Set reviewId explicitly from the queue. Saves the inspected version. Includes submitted profile/preferences and current photos for staff review; opening the record is audited. Photo approval is separate."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) pm.environment.set(\"reviewVersion\", String(pm.response.json().review.version));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "05A | Approve inspected revision",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/verifications/{{reviewId}}/approve",
+        "description": "Run APPROVE or REQUEST CHANGES. Expected version must be the version you inspected. Stale or superseded review returns 409 STALE_REVIEW. A staff member cannot review their own profile.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"expectedVersion\": {{reviewVersion}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "05B | Request member corrections",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/verifications/{{reviewId}}/request-changes",
+        "description": "Alternative to approval. Feedback is visible to the member; use respectful correction instructions, not private reviewer notes. An approved member remains unlocked.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"expectedVersion\": {{reviewVersion}},\n  \"feedback\": \"{{feedback}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "06 | Member - Verification status and pending draft",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/profiles/me/verification",
+        "description": "Use the member's backend token. Includes onboardingComplete, verified, profileLocked, latest status, correction feedback and pendingSubmission. Pending approved-member edits leave profileLocked=false.",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{memberAccessToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Member - Staff access denied (401)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/me",
+        "description": "A member/Firebase token is not a staff session. Expect 401.",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{memberAccessToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 401\", function () { pm.response.to.have.status(401); });"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Superadmin - Create Admin (manual)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/staff",
+        "description": "Creates ADMIN only; no role field. Share the temporary password privately. Admin must change it before review access.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{newAdminUsername}}\",\n  \"temporaryPassword\": \"{{temporaryPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const fields = {\"username\": \"newAdminUsername\", \"temporaryPassword\": \"temporaryPassword\"};",
+              "const body = {};",
+              "Object.keys(fields).forEach(function (field) {",
+              "  const value = pm.variables.get(fields[field]);",
+              "  if (typeof value !== \"string\" || !value.length) { throw new Error(\"Set \" + fields[field] + \" in your private selected environment.\"); }",
+              "  body[field] = value;",
+              "});",
+              "pm.request.body.update(JSON.stringify(body));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+              "if (pm.response.code === 201) { pm.environment.set(\"staffUserId\", pm.response.json().userId); }"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Superadmin - List staff",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/staff?page=0&size=20",
+        "description": "Superadmin only. Hashes/passwords are never returned."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Superadmin - Reset an Admin password (manual branch)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/staff/{{staffUserId}}/reset-password",
+        "description": "Use a new temporary password for an active ADMIN. Cannot reset Superadmins or self. Invalidates the target's previous staff tokens.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"temporaryPassword\": \"{{temporaryPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const fields = {\"temporaryPassword\": \"temporaryPassword\"};",
+              "const body = {};",
+              "Object.keys(fields).forEach(function (field) {",
+              "  const value = pm.variables.get(fields[field]);",
+              "  if (typeof value !== \"string\" || !value.length) { throw new Error(\"Set \" + fields[field] + \" in your private selected environment.\"); }",
+              "  body[field] = value;",
+              "});",
+              "pm.request.body.update(JSON.stringify(body));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Reports | Member sign-ins",
+      "description": "Read-only staff report. Requires V9 and a full staff session after password change. Backend supplies hierarchy, column metadata, values and pagination. No live responses captured.",
+      "item": [
+        {
+          "name": "Report catalog - Nested groups",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/admin/reports",
+            "description": "Both Admin and Superadmin. GROUP nodes contain children; REPORT nodes identify an implemented report."
+          },
+          "response": []
+        },
+        {
+          "name": "Signed-in users - Metadata and page",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/admin/reports/signed-in-users?page=0&size=20",
+            "description": "Newest member accounts first. Page is zero-based; size 1-100. Read columns for keys, labels, types and status labels; content contains only selected values plus rowId. Old last-login values can be null. Onboarded and verified are independent."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Staff - Logout (manual last step)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/v1/admin/auth/logout",
+        "description": "Invalidates all current tokens for this staff account, including this one."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 204\", function () { pm.response.to.have.status(204); });",
+              "if (pm.response.code === 204) { pm.environment.unset(\"adminAccessToken\"); pm.environment.unset(\"passwordChangeRequired\"); }"
+            ]
+          }
+        }
+      ],
+      "response": []
+    }
+  ]
+}

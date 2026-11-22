@@ -17,6 +17,10 @@ public interface MatchProfileRepository extends JpaRepository<MatchProfile, UUID
         WHERE m.userId != :myId 
           AND (:seekingGender IS NULL OR m.gender = :seekingGender)
           AND m.active = true
+          AND EXISTS (
+              SELECT 1 FROM User u WHERE u.id = m.userId
+                AND u.active = true AND u.deletedAt IS NULL AND u.verified = true
+          )
           AND (:minAge IS NULL OR m.age >= :minAge)
           AND (:maxAge IS NULL OR m.age <= :maxAge)
           AND (:city IS NULL OR m.currentCity = :city)
@@ -25,6 +29,11 @@ public interface MatchProfileRepository extends JpaRepository<MatchProfile, UUID
               WHERE ui.actorId = :myId 
                 AND ui.targetId = m.userId 
                 AND ui.action IN ('PASSED', 'BLOCKED')
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM UserInteraction blocked
+              WHERE blocked.actorId = m.userId AND blocked.targetId = :myId
+                AND blocked.action = 'BLOCKED'
           )
     """)
     Page<MatchProfile> findDiscoveryFeed(

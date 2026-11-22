@@ -52,6 +52,7 @@ class ProfileViewServiceTests {
 
         viewer = new User(null, "viewer@example.test");
         viewer.setId(viewerId);
+        viewer.setVerified(true);
         target = new User("1234567890", "private@example.test");
         target.setId(targetId);
         target.setVerified(true);
@@ -123,10 +124,13 @@ class ProfileViewServiceTests {
 
     @Test
     void unverifiedViewerCannotReadAllVerifiedPhotos() {
+        viewer.setVerified(false);
         when(photos.findProfilePhotos(targetId))
                 .thenReturn(List.of(photo("verified.jpg", "APPROVED", "ALL_VERIFIED")));
 
-        assertTrue(service.getProfile(viewerId, targetId).photos().isEmpty());
+        var error = assertThrows(ResponseStatusException.class, () -> service.getProfile(viewerId, targetId));
+        assertEquals(HttpStatus.FORBIDDEN, error.getStatusCode());
+        assertEquals("VERIFICATION_REQUIRED", error.getBody().getProperties().get("code"));
         verifyNoInteractions(photoUrls);
     }
 

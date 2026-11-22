@@ -116,9 +116,22 @@ public class SecurityRuleConfig {
                         .requestMatchers("/index.html").permitAll()
                         .requestMatchers("/phone.html").permitAll()
 
+                        .requestMatchers("/v1/admin/**").hasAnyRole("ADMIN", "SUPERADMIN")
+
                         // Block EVERYTHING else
                         .anyRequest().authenticated()
                 )
+                .exceptionHandling(errors -> errors
+                        .authenticationEntryPoint((request, response, failure) -> {
+                            response.setStatus(401);
+                            response.setContentType("application/problem+json");
+                            response.getWriter().write("{\"status\":401,\"title\":\"Unauthorized\",\"detail\":\"A valid access token is required.\"}");
+                        })
+                        .accessDeniedHandler((request, response, failure) -> {
+                            response.setStatus(403);
+                            response.setContentType("application/problem+json");
+                            response.getWriter().write("{\"status\":403,\"title\":\"Forbidden\",\"detail\":\"Permission denied.\"}");
+                        }))
                 // Inject our custom filter right before the default Spring password filter
                 .addFilterBefore(tokenFilter, UsernamePasswordAuthenticationFilter.class);
 

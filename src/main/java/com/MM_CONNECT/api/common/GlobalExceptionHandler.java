@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 import java.net.URI;
 import java.time.Instant;
@@ -59,6 +61,18 @@ public class GlobalExceptionHandler {
     }
 
     // 2. Fallback for unexpected runtime exceptions
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ProblemDetail handleStaleReview(OptimisticLockingFailureException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Review changed. Reload before deciding.");
+        detail.setProperty("code", "STALE_REVIEW");
+        return detail;
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ProblemDetail handleUnreadableRequest(HttpMessageNotReadableException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Failed to read request. Check JSON field types.");
+    }
+
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGenericException(Exception ex) {
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(

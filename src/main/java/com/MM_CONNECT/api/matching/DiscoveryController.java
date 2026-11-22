@@ -1,6 +1,9 @@
 package com.MM_CONNECT.api.matching;
 
 import com.MM_CONNECT.api.auth.UserRepository;
+import com.MM_CONNECT.api.auth.User;
+import com.MM_CONNECT.api.verification.MemberAccessService;
+import com.MM_CONNECT.api.media.PhotoAccessService;
 import com.MM_CONNECT.api.media.PhotoUploadService;
 import com.MM_CONNECT.api.media.ProfilePhoto;
 import com.MM_CONNECT.api.media.ProfilePhotoRepository;
@@ -37,19 +40,23 @@ public class DiscoveryController {
     private final PhotoUploadService photoUploadService;
     private final UserInteractionRepository interactionRepository; // <-- Added
     private final UserRepository userRepository;
+    private final MemberAccessService access;
+    private final PhotoAccessService photoAccess;
 
     public DiscoveryController(MatchProfileRepository matchRepository,
                                ProfileRepository profileRepository,
                                ProfilePhotoRepository photoRepository,
                                PhotoUploadService photoUploadService,
                                UserInteractionRepository interactionRepository,
-                               UserRepository userRepository) {
+                               UserRepository userRepository, MemberAccessService access, PhotoAccessService photoAccess) {
         this.matchRepository = matchRepository;
         this.profileRepository = profileRepository;
         this.photoRepository = photoRepository;
         this.photoUploadService = photoUploadService;
         this.interactionRepository = interactionRepository;
         this.userRepository = userRepository;
+        this.access = access;
+        this.photoAccess = photoAccess;
     }
 
     @GetMapping
@@ -62,10 +69,11 @@ public class DiscoveryController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        userRepository.findById(myUserId)
-                .filter(user -> user.isActive() && user.getDeletedAt() == null)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is not active."));
-        boolean profileLocked = !profileRepository.existsById(myUserId);
+        User viewer = access.activeUser(myUserId);
+        boolean profileLocked = !access.hasMemberAccess(viewer);
+        if (page < 0 || size < 1 || size > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Page must be nonnegative and size must be 1–100.");
+        }
 
         String seekingGender = resolveSeekingGender(gender);
         Pageable pageable = PageRequest.of(page, size);
@@ -76,7 +84,7 @@ public class DiscoveryController {
 
         List<DiscoveryCardDto> feed = new ArrayList<>();
         for (MatchProfile match : matchPage.getContent()) {
-            DiscoveryCardDto card = buildCard(match);
+            DiscoveryCardDto card = buildCard(myUserId, match);
             if (card != null) feed.add(card);
         }
 
@@ -111,6 +119,7 @@ public class DiscoveryController {
             @AuthenticationPrincipal UUID myUserId,
             @PathVariable UUID targetUserId) {
 
+        requireAction(myUserId, targetUserId);
         interactionRepository.save(new UserInteraction(myUserId, targetUserId, "PASSED"));
         return ResponseEntity.ok(Map.of("message", "Profile passed and hidden from discovery."));
     }
@@ -121,6 +130,7 @@ public class DiscoveryController {
             @AuthenticationPrincipal UUID myUserId,
             @PathVariable UUID targetUserId) {
 
+        requireAction(myUserId, targetUserId);
         interactionRepository.save(new UserInteraction(myUserId, targetUserId, "SHORTLISTED"));
         return ResponseEntity.ok(Map.of("message", "Profile added to shortlist."));
     }
@@ -128,12 +138,13 @@ public class DiscoveryController {
     // 3. GET MY SHORTLISTED PROFILES
     @GetMapping("/shortlist")
     public ResponseEntity<List<DiscoveryCardDto>> getShortlistedProfiles(@AuthenticationPrincipal UUID myUserId) {
+        access.requireApproved(myUserId);
         List<UserInteraction> shortlisted = interactionRepository.findByActorIdAndAction(myUserId, "SHORTLISTED");
 
         List<DiscoveryCardDto> result = new ArrayList<>();
         for (UserInteraction item : shortlisted) {
             matchRepository.findById(item.getTargetId()).ifPresent(match -> {
-                DiscoveryCardDto card = buildCard(match);
+                DiscoveryCardDto card = buildCard(myUserId, match);
                 if (card != null) result.add(card);
             });
         }
@@ -141,13 +152,17 @@ public class DiscoveryController {
     }
 
     // Helper method to build a UI Card cleanly
-    private DiscoveryCardDto buildCard(MatchProfile match) {
+    private DiscoveryCardDto buildCard(UUID viewerId, MatchProfile match) {
+        if (!match.isActive() || userRepository.findById(match.getUserId())
+                .filter(u -> u.isActive() && u.getDeletedAt() == null && u.isVerified()).isEmpty()
+                || blocked(viewerId, match.getUserId())) return null;
         Profile profileDetails = profileRepository.findById(match.getUserId()).orElse(null);
         if (profileDetails == null) return null;
 
         String photoUrl = null;
         Optional<ProfilePhoto> mainPhoto = photoRepository.findAll().stream()
-                .filter(p -> p.getUserId().equals(match.getUserId()) && p.isPrimary())
+                .filter(p -> p.getUserId().equals(match.getUserId()) && p.isPrimary()
+                        && photoAccess.canView(viewerId, p))
                 .findFirst();
 
         if (mainPhoto.isPresent()) {
@@ -163,5 +178,17 @@ public class DiscoveryController {
                 match.getReligion(),
                 photoUrl
         );
+    }
+
+    private void requireAction(UUID viewerId, UUID targetId) {
+        access.requireApproved(viewerId);
+        access.requirePublishedTarget(targetId);
+        if (viewerId.equals(targetId)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose another profile.");
+        if (blocked(viewerId, targetId)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found");
+    }
+
+    private boolean blocked(UUID viewerId, UUID targetId) {
+        return interactionRepository.existsByActorIdAndTargetIdAndAction(viewerId, targetId, "BLOCKED")
+                || interactionRepository.existsByActorIdAndTargetIdAndAction(targetId, viewerId, "BLOCKED");
     }
 }
